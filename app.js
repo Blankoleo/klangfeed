@@ -660,7 +660,7 @@ function goTo(i, smooth = true) {
 const players = [new Audio(), new Audio()];
 for (const a of players) { a.preload = 'auto'; a.setAttribute('playsinline', ''); }
 let pa = players[0], pn = players[1];
-let unlocked = false, wantPlay = false, watchdog = 0, appleTimer = 0;
+let unlocked = false, gestureUnlocked = false, wantPlay = false, watchdog = 0, appleTimer = 0;
 
 const isStale = s => s && s.dz && s.exp && Date.now() > s.exp - STALE_MS;
 async function refreshDz(s) {
@@ -691,6 +691,14 @@ function nowSong() { return savedPlaying || songs[cur]; }
 function play(s) {
   if (!s) return;
   wantPlay = true;
+  // Deezer-Song: erst die Apple-Vorschau holen (meist schon vorab erledigt). Nicht während der
+  // Freigabe-Geste warten, sonst verweigert iOS das Abspielen.
+  if (s.dz && !s.apl && !s.aplTried && !gestureUnlocked) {
+    s.aplTried = true;
+    setCardState(s, 'loading');
+    useApplePreview(s).then(() => { if (nowSong() === s && wantPlay) play(s); });
+    return;
+  }
   if (isStale(s)) { setCardState(s, 'loading'); refreshDz(s).then(() => { if (nowSong() === s && wantPlay) play2(s); }, () => play2(s)); return; }
   play2(s);
 }
@@ -712,10 +720,13 @@ function play2(s) {
 function pause() { wantPlay = false; pa.pause(); clearTimeout(watchdog); }
 function preloadNext() {
   const n = songs[cur + 1];
-  if (n && !savedPlaying && !isStale(n)) loadInto(pn, n);
+  if (!n || savedPlaying) return;
+  useApplePreview(n, 8000).then(() => { if (songs[cur + 1] === n && !isStale(n)) loadInto(pn, n); });
 }
 async function failed(s, why) {
   clearTimeout(watchdog);
+  // Deezer-Vorschau kaputt (403/abgelaufen) → Apple-Vorschau versuchen, bevor übersprungen wird
+  if (s.dz && !s.apl) { await useApplePreview(s, 5000); if (s.apl && s.exp === 0 && nowSong() === s) { pa.dataset.id = ''; return play2(s); } }
   if (s.dz && !s._retried) { s._retried = true; try { await refreshDz(s); if (nowSong() === s) { pa.dataset.id = ''; return play2(s); } } catch {} }
   if (nowSong() !== s) return;
   if (savedPlaying) { toast('Vorschau nicht verfügbar'); setSavedPlaying(null); return; }
@@ -810,33 +821,53 @@ function markSeen(s) {
 }
 // Für Deezer-Songs den passenden Apple-Music-Link suchen (nur für die Karte, die gerade vorn bleibt)
 const appleCache = {};
+// Apple-Treffer zu einem Song (Link + stabile Apple-Vorschau). Ein Aufruf pro Song, gecacht.
+const applePending = {};
+function appleMatch(s) {
+  const k = songKey(s);
+  if (k in appleCache) return Promise.resolve(appleCache[k]);
+  return applePending[k] ||= itunes(`https://itunes.apple.com/search?term=${encodeURIComponent(mainArtist(s.artist) + ' ' + s.title)}&media=music&entity=song&limit=15&country=de`)
+    .then(d => {
+      const sq = x => norm(x).replace(/[^a-z0-9]/g, '');
+      const key = x => sq(x) || norm(x).replace(/\s+/g, '');
+      const A = key(mainArtist(s.artist)), T = key(s.title).slice(0, 10);
+      const hit = A && T && (d.results || []).find(r => key(r.artistName).includes(A) && key(r.trackName).startsWith(T));
+      return appleCache[k] = hit ? { url: hit.trackViewUrl, year: (hit.releaseDate || '').slice(0, 4), preview: hit.previewUrl || '' } : null;
+    }, () => null)
+    .finally(() => { delete applePending[k]; });
+}
+// Deezer-Vorschauen sind an die IP gebunden und laufen nach ~15 min ab (iPhone: Privat-Relay,
+// WLAN↔Mobilfunk → 403 → Song wird übersprungen). Darum für Deezer-Songs die Apple-Vorschau nehmen.
+async function useApplePreview(s, waitMs = 2500) {
+  if (!s || !s.dz || s.apl) return s;
+  const h = await Promise.race([appleMatch(s), new Promise(r => setTimeout(() => r(undefined), waitMs))]);
+  if (h === undefined) return s;            // zu langsam – diesmal Deezer, Treffer landet trotzdem im Cache
+  s.apl = true;
+  if (h) {
+    if (h.preview) { s.preview = h.preview; s.exp = 0; }
+    if (!s.url && h.url) { s.url = h.url; const el = cardOf(s); if (el) el.querySelector('.lnk.am').href = s.url; }
+    if (!s.year && h.year) s.year = h.year;
+  }
+  return s;
+}
 async function resolveApple(s) {
   if (s.url || songs[cur] !== s) return;
-  const k = songKey(s);
-  try {
-    if (!(k in appleCache)) {
-      const d = await itunes(`https://itunes.apple.com/search?term=${encodeURIComponent(mainArtist(s.artist) + ' ' + s.title)}&media=music&entity=song&limit=5&country=de`);
-      const hit = (d.results || []).find(r => norm(r.artistName).includes(norm(mainArtist(s.artist))) && norm(r.trackName).startsWith(norm(s.title).slice(0, 12)));
-      appleCache[k] = hit ? { url: hit.trackViewUrl, year: (hit.releaseDate || '').slice(0, 4), genre: hit.primaryGenreName } : null;
-    }
-    const h = appleCache[k];
-    if (!h) return;
-    s.url = h.url;
-    const el = cardOf(s); if (el) el.querySelector('.lnk.am').href = s.url;
-  } catch {}
+  const h = await appleMatch(s);
+  if (!h || s.url) return;
+  s.url = h.url;
+  const el = cardOf(s); if (el) el.querySelector('.lnk.am').href = s.url;
 }
 
 // ---------------------------------------------------------------- Freigabe fürs Abspielen (iOS braucht eine Geste)
 function unlockFromGesture() {
   if (unlocked) return false;
-  unlocked = true;
+  unlocked = true; gestureUnlocked = true; setTimeout(() => { gestureUnlocked = false; }, 400);
   const s = nowSong();
   // Das zweite Element in derselben Geste freischalten, damit der Wechsel später ohne Tippen klappt
   try { pn.muted = true; const n = songs[cur + 1]; if (n && !pn.getAttribute('src')) loadInto(pn, n); const p = pn.play(); if (p) p.then(() => { pn.pause(); pn.muted = false; }, () => { pn.muted = false; }); } catch {}
   if (s) play(s);
   return true;
 }
-let gestureUnlocked = false;
 ['touchend', 'click', 'keydown'].forEach(ev => document.getElementById('view-feed').addEventListener(ev, e => {
   if (unlocked || !songs.length || e.target.closest?.('.modes, a')) return;
   gestureUnlocked = unlockFromGesture();
