@@ -2,8 +2,10 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0b0b10">
+  <!-- Sicherheitsregel: nur eigene Skripte plus Deezer-JSONP; Daten nur von Apple (iTunes) und Deezer. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src https:; connect-src 'self' https://itunes.apple.com https://api.deezer.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07080d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,39 +15,155 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="preconnect" href="https://itunes.apple.com">
+  <link rel="preconnect" href="https://api.deezer.com">
   <link rel="preconnect" href="https://is1-ssl.mzstatic.com">
+  <link rel="preconnect" href="https://cdn-images.dzcdn.net">
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header id="topbar">
-    <nav id="chips" aria-label="Genres"></nav>
-    <button id="savedBtn" class="saved-btn" aria-label="Gemerkte Songs">❤️ <span id="savedCount">0</span></button>
-  </header>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
-  <main id="feed" aria-label="Song-Feed">
-    <div id="track"></div>
+  <main id="view-feed" class="view active">
+    <h1 class="vh">Feed</h1>
+    <div id="modes" class="modes" role="radiogroup" aria-label="Was soll kommen?">
+      <i class="mode-ind"></i>
+      <button type="button" role="radio" data-m="mix">Mix</button>
+      <button type="button" role="radio" data-m="dir">Richtung</button>
+      <button type="button" role="radio" data-m="new">Ganz neu</button>
+      <button type="button" role="radio" data-m="chart">Charts</button>
+    </div>
+    <div id="feed" class="feed" aria-label="Song-Feed"><div id="track"></div></div>
   </main>
 
-  <div id="loader" class="loader" hidden><div class="spinner"></div><p>Lade neue Songs …</p></div>
+  <section id="view-saved" class="view">
+    <header class="page-head">
+      <h1>Gemerkt</h1>
+      <p id="saved-sub" class="sub"></p>
+    </header>
+    <ul id="saved-list" class="list"></ul>
+    <p id="saved-empty" class="empty">Noch nichts gemerkt.<br>Tippe zweimal auf ein Cover oder auf das Herz, um einen Song zu behalten.</p>
+  </section>
 
-  <div id="startOverlay" class="start-overlay">
-    <div class="start-inner">
-      <img src="icon.svg" alt="" width="96" height="96">
-      <h1>Klangfeed</h1>
-      <p>Wische nach oben und entdecke neue Musik.<br>Jeder Song spielt eine 30-Sekunden-Vorschau.</p>
-      <button id="startBtn" class="start-btn" disabled>Lädt …</button>
+  <section id="view-settings" class="view">
+    <header class="page-head">
+      <h1>Einstellungen</h1>
+      <p class="sub" id="stats"></p>
+    </header>
+    <div class="pad">
+      <h3 class="set-h">Entdecken</h3>
+      <div class="set-group">
+        <div class="set-block">
+          <div class="set-label">Mischung im „Mix“<small>Wie viel von jeder Art kommt. Die drei Werte ergeben zusammen 100 %.</small></div>
+          <div class="mixrow"><span class="mixname"><b>In meiner Richtung</b><small>Ähnliche Künstler zu deinen Lieblingen</small></span><output id="mix-dir-v"></output></div>
+          <input type="range" id="mix-dir" class="slider" min="0" max="100" step="5" aria-label="In meiner Richtung">
+          <div class="mixrow"><span class="mixname"><b>Ganz neu</b><small>Genres und Länder außerhalb deines Profils</small></span><output id="mix-new-v"></output></div>
+          <input type="range" id="mix-new" class="slider" min="0" max="100" step="5" aria-label="Ganz neu">
+          <div class="mixrow"><span class="mixname"><b>Charts</b><small>Was gerade in anderen Ländern läuft</small></span><output id="mix-chart-v"></output></div>
+          <input type="range" id="mix-chart" class="slider" min="0" max="100" step="5" aria-label="Charts">
+          <div class="mixbar" aria-hidden="true"><i class="b-dir"></i><i class="b-new"></i><i class="b-chart"></i></div>
+        </div>
+        <div class="set-block">
+          <div class="set-label">Deine Richtungen<small>Grundlage für „In meiner Richtung“, besonders ohne importierte Mediathek. Antippen zum Ein- und Ausschalten.</small></div>
+          <div id="style-chips" class="chips"></div>
+        </div>
+        <div class="set-block">
+          <div class="set-label">Charts aus diesen Ländern</div>
+          <div id="country-chips" class="chips"></div>
+        </div>
+      </div>
+
+      <h3 class="set-h">Deine Mediathek</h3>
+      <div class="set-group">
+        <div class="set-block">
+          <div class="set-label">Geschmacksprofil<small id="profile-state">Noch kein Profil importiert.</small></div>
+          <label class="btn file-btn" for="profile-file">Mediathek importieren</label>
+        </div>
+        <details class="set-more">
+          <summary>So geht’s</summary>
+          <p>Tippe auf „Mediathek importieren“ → „Durchsuchen“ → iCloud Drive → Ordner „Klangfeed“ → <b>geschmack.json</b>.</p>
+          <p>Klangfeed nimmt deine Lieblingskünstler als Ausgangspunkt für ähnliche Musik und blendet alles aus, was schon in deiner Mediathek ist – so kommt wirklich Neues.</p>
+          <p>Die Datei bleibt nur auf diesem Gerät. Nach außen gehen höchstens einzelne Künstlernamen als Suchbegriff an Deezer, um ähnliche Künstler zu finden.</p>
+        </details>
+        <button id="profile-del" class="set-row" type="button" hidden><span class="set-text"><b class="danger">Profil löschen</b><small>Entfernt die importierte Mediathek von diesem Gerät.</small></span></button>
+      </div>
+
+      <h3 class="set-h">Wiedergabe</h3>
+      <div class="set-group">
+        <label class="set-row">
+          <span class="set-text"><b>Automatisch weiter</b><small>Nach der 30-Sekunden-Vorschau zum nächsten Song.</small></span>
+          <input type="checkbox" id="autonext" class="switch">
+        </label>
+      </div>
+
+      <h3 class="set-h">Aussehen</h3>
+      <div class="set-group">
+        <div class="set-block">
+          <div class="set-label">Farbe</div>
+          <div id="theme-picks" class="theme-picks" role="radiogroup" aria-label="Farbe"></div>
+        </div>
+        <label class="set-row">
+          <span class="set-text"><b>Ruhige Darstellung</b><small>Weniger Bewegung, schont den Akku.</small></span>
+          <input type="checkbox" id="calm" class="switch">
+        </label>
+      </div>
+
+      <h3 class="set-h">Gelerntes</h3>
+      <div class="set-group">
+        <details class="set-more" id="learned-box">
+          <summary>Was Klangfeed gelernt hat</summary>
+          <p>Merken und langes Zuhören machen Künstler und Richtungen häufiger, schnelles Weiterwischen und „Weniger“ seltener.</p>
+          <div id="weights" class="weights"></div>
+          <button id="reset" class="btn ghost" type="button">Gelerntes zurücksetzen</button>
+        </details>
+      </div>
+
+      <h3 class="set-h">Über diese App</h3>
+      <div class="set-group">
+        <details class="set-more">
+          <summary>Quellen</summary>
+          <p>Vorschauen, Cover und Charts kommen von Apple (iTunes Search API, iTunes-Charts) und Deezer (ähnliche Künstler, Playlists, Vorschauen). Klangfeed ist kein Angebot von Apple, Deezer oder Spotify.</p>
+        </details>
+        <details class="set-more">
+          <summary>Datenschutz</summary>
+          <p>Keine Konten, keine Werbung, kein Tracking, kein eigener Server. Gemerktes, Gelerntes und deine Mediathek bleiben nur auf diesem Gerät.</p>
+          <p>Um Songs zu laden, fragt dein Gerät direkt bei Apple und Deezer an; die App selbst kommt von GitHub Pages. Diese Dienste sehen dabei technisch deine IP-Adresse – wie bei jeder Website.</p>
+        </details>
+        <button id="wipe" class="set-row" type="button"><span class="set-text"><b class="danger">Alle Daten auf diesem Gerät löschen</b><small>Gemerktes, Gelerntes, Profil und Einstellungen.</small></span></button>
+      </div>
+      <p class="version">Klangfeed · Version 2.0</p>
+    </div>
+  </section>
+
+  <nav class="tabbar">
+    <i class="tab-ind"></i>
+    <button data-view="feed" class="active"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg></span><em>Feed</em></button>
+    <button data-view="saved"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z"/></svg><b id="saved-count" class="badge" hidden></b></span><em>Gemerkt</em></button>
+    <button data-view="settings"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/></svg></span><em>Einstellungen</em></button>
+  </nav>
+
+  <div id="onboard" class="sheet" role="dialog" aria-modal="true" aria-labelledby="ob-title" hidden>
+    <div class="sheet-scroll">
+      <div class="ob">
+        <img src="icon.svg" alt="" width="76" height="76" class="ob-icon">
+        <h1 id="ob-title">Klangfeed</h1>
+        <p class="sub">Wische durch 30-Sekunden-Vorschauen. Zweimal aufs Cover tippen merkt einen Song.</p>
+        <div class="ob-card">
+          <b>Am besten: deine Mediathek</b>
+          <p>Dann kommen Künstler, die deinen Lieblingen ähneln – aber nichts, was du schon hast.</p>
+          <label class="btn file-btn" for="profile-file">Mediathek importieren</label>
+          <small id="ob-profile">iCloud Drive → Klangfeed → geschmack.json</small>
+        </div>
+        <div class="ob-card">
+          <b>Oder: Richtungen antippen</b>
+          <div id="ob-styles" class="chips"></div>
+        </div>
+        <button id="ob-go" class="btn big" type="button">Los geht’s</button>
+      </div>
     </div>
   </div>
 
-  <section id="saved" class="saved-panel" hidden aria-label="Gemerkt">
-    <header class="saved-head">
-      <h2>Gemerkt</h2>
-      <button id="savedClose" class="icon-btn" aria-label="Schließen">✕</button>
-    </header>
-    <ul id="savedList" class="saved-list"></ul>
-    <p id="savedEmpty" class="saved-empty">Noch nichts gemerkt.<br>Tippe auf ❤️ bei einem Song.</p>
-  </section>
-
+  <input type="file" id="profile-file" accept=".json,application/json" hidden>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
