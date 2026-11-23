@@ -656,10 +656,11 @@ function goTo(i, smooth = true) {
 }
 
 // ---------------------------------------------------------------- Wiedergabe
-// Zwei Audio-Elemente im Wechsel: Das eine spielt, das andere lädt schon den nächsten Song vor.
-const players = [new Audio(), new Audio()];
+// EIN Audio-Element für alles: iOS gibt nur das Element frei, das per Tipp gestartet wurde.
+// (Zwei Elemente im Wechsel → das zweite blieb auf dem iPhone stumm und jeder Song wurde übersprungen.)
+const players = [new Audio()];
 for (const a of players) { a.preload = 'auto'; a.setAttribute('playsinline', ''); }
-let pa = players[0], pn = players[1];
+const pa = players[0];
 let unlocked = false, gestureUnlocked = false, wantPlay = false, watchdog = 0, appleTimer = 0;
 
 const isStale = s => s && s.dz && s.exp && Date.now() > s.exp - STALE_MS;
@@ -695,6 +696,7 @@ function play(s) {
   // Freigabe-Geste warten, sonst verweigert iOS das Abspielen.
   if (s.dz && !s.apl && !s.aplTried && !gestureUnlocked) {
     s.aplTried = true;
+    if (pa.dataset.id !== s.id) pa.pause();
     setCardState(s, 'loading');
     useApplePreview(s).then(() => { if (nowSong() === s && wantPlay) play(s); });
     return;
@@ -703,8 +705,6 @@ function play(s) {
   play2(s);
 }
 function play2(s) {
-  if (pn.dataset.id === s.id && pn.dataset.src === s.preview) { const t = pa; pa = pn; pn = t; }
-  for (const a of players) if (a !== pa) a.pause();
   loadInto(pa, s);
   if (pa.ended || pa.currentTime > 0 && pa.dataset.id !== s.id) pa.currentTime = 0;
   if (pa.paused || pa.readyState < 3) setCardState(s, 'loading');
@@ -721,7 +721,7 @@ function pause() { wantPlay = false; pa.pause(); clearTimeout(watchdog); }
 function preloadNext() {
   const n = songs[cur + 1];
   if (!n || savedPlaying) return;
-  useApplePreview(n, 8000).then(() => { if (songs[cur + 1] === n && !isStale(n)) loadInto(pn, n); });
+  useApplePreview(n, 8000);   // nur die Apple-Vorschau vorab heraussuchen – kein zweites Audio-Element
 }
 async function failed(s, why) {
   clearTimeout(watchdog);
@@ -826,14 +826,14 @@ const applePending = {};
 function appleMatch(s) {
   const k = songKey(s);
   if (k in appleCache) return Promise.resolve(appleCache[k]);
-  return applePending[k] ||= itunes(`https://itunes.apple.com/search?term=${encodeURIComponent(mainArtist(s.artist) + ' ' + s.title)}&media=music&entity=song&limit=15&country=de`)
-    .then(d => {
-      const sq = x => norm(x).replace(/[^a-z0-9]/g, '');
-      const key = x => sq(x) || norm(x).replace(/\s+/g, '');
-      const A = key(mainArtist(s.artist)), T = key(s.title).slice(0, 10);
-      const hit = A && T && (d.results || []).find(r => key(r.artistName).includes(A) && key(r.trackName).startsWith(T));
-      return appleCache[k] = hit ? { url: hit.trackViewUrl, year: (hit.releaseDate || '').slice(0, 4), preview: hit.previewUrl || '' } : null;
-    }, () => null)
+  const sq = x => norm(x).replace(/[^a-z0-9]/g, '');
+  const key = x => sq(x) || norm(x).replace(/\s+/g, '');
+  const A = key(mainArtist(s.artist)), T = key(s.title).slice(0, 10);
+  const find = country => itunes(`https://itunes.apple.com/search?term=${encodeURIComponent(mainArtist(s.artist) + ' ' + s.title)}&media=music&entity=song&limit=15&country=${country}`)
+    .then(d => A && T && (d.results || []).find(r => r.previewUrl && key(r.artistName).includes(A) && key(r.trackName).startsWith(T)) || null);
+  // Erst deutscher Store, sonst US-Store (Vorschauen von dort spielen auch hier)
+  return applePending[k] ||= find('de').then(h => h || find('us'))
+    .then(hit => appleCache[k] = hit ? { url: hit.trackViewUrl, year: (hit.releaseDate || '').slice(0, 4), preview: hit.previewUrl } : null, () => null)
     .finally(() => { delete applePending[k]; });
 }
 // Deezer-Vorschauen sind an die IP gebunden und laufen nach ~15 min ab (iPhone: Privat-Relay,
@@ -863,8 +863,6 @@ function unlockFromGesture() {
   if (unlocked) return false;
   unlocked = true; gestureUnlocked = true; setTimeout(() => { gestureUnlocked = false; }, 400);
   const s = nowSong();
-  // Das zweite Element in derselben Geste freischalten, damit der Wechsel später ohne Tippen klappt
-  try { pn.muted = true; const n = songs[cur + 1]; if (n && !pn.getAttribute('src')) loadInto(pn, n); const p = pn.play(); if (p) p.then(() => { pn.pause(); pn.muted = false; }, () => { pn.muted = false; }); } catch {}
   if (s) play(s);
   return true;
 }
