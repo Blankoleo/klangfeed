@@ -115,9 +115,15 @@ const mainArtist = a => String(a || '').split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\sx\s
 const songKey = s => norm(mainArtist(s.artist)) + '|' + norm(s.title);
 const spotifyUrl = s => 'https://open.spotify.com/search/' + encodeURIComponent(`${mainArtist(s.artist)} ${s.title}`);
 const appleSearch = s => 'https://music.apple.com/de/search?term=' + encodeURIComponent(`${mainArtist(s.artist)} ${s.title}`);
-// Direkter Song-Link statt Album-Link (…/album/x/123?i=456 öffnet in der Musik-App nur das Album)
-const amSong = url => { const m = /[?&]i=(\d+)/.exec(url || '') || /\/song\/(?:[^/?]+\/)?(\d+)/.exec(url || ''); return m ? 'https://music.apple.com/de/song/' + m[1] : url; };
-const amLink = s => s.url ? amSong(s.url) : appleSearch(s);
+// Auf dem iPhone öffnen https-Links aus der Home-Screen-App die Musik-App nur auf der Startseite.
+// Getestet (Nov 2026): nur music://music.apple.com/<land>/album/<name>/<albumId>?i=<songId> springt direkt zum Song.
+const amApp = url => {
+  const m = /music\.apple\.com\/([a-z]{2})\/album\/([^/?]+\/)?(\d+)\?(?:.*&)?i=(\d+)/.exec(url || '');
+  return m ? `music://music.apple.com/${m[1]}/album/${m[2] || ''}${m[3]}?i=${m[4]}` : url;
+};
+const amLink = s => s.url ? amApp(s.url) : appleSearch(s);
+const setAm = (a, s) => { if (!a) return; a.href = amLink(s); if (a.href.startsWith('music:')) { a.removeAttribute('target'); a.removeAttribute('rel'); } else { a.target = '_blank'; a.rel = 'noopener'; } };
+const amTarget = s => amLink(s).startsWith('music:') ? '' : ' target="_blank" rel="noopener"';
 const itArt = (url, size) => url ? url.replace(/\/\d+x\d+bb(\.\w+)$/, `/${size}x${size}bb$1`) : '';
 const dzArt = (md5, size) => md5 ? `https://cdn-images.dzcdn.net/images/cover/${md5}/${size}x${size}-000000-80-0-0.jpg` : '';
 const dzExp = url => { const m = /exp=(\d{9,})/.exec(url || ''); return m ? m[1] * 1000 : 0; };
@@ -531,7 +537,7 @@ function makeCard(i) {
       <h2 class="title">${esc(s.title)}</h2>
       <p class="artist">${esc(s.artist)}${sub ? ` <small>· ${esc(sub)}</small>` : ''}</p>
       <div class="links">
-        <a class="lnk am" data-a="link" href="${esc(amLink(s))}" target="_blank" rel="noopener">${svg('apple')}<span>Apple Music</span></a>
+        <a class="lnk am" data-a="link" href="${esc(amLink(s))}"${amTarget(s)}>${svg('apple')}<span>Apple Music</span></a>
         <a class="lnk sp" data-a="link" href="${esc(spotifyUrl(s))}" target="_blank" rel="noopener">${svg('spotify')}<span>Spotify</span></a>
       </div>
       <div class="progress" data-a="seek"><i></i></div>
@@ -848,7 +854,7 @@ async function useApplePreview(s, waitMs = 2500) {
   s.apl = true;
   if (h) {
     if (h.preview) { s.preview = h.preview; s.exp = 0; }
-    if (!s.url && h.url) { s.url = h.url; const el = cardOf(s); if (el) el.querySelector('.lnk.am').href = amLink(s); }
+    if (!s.url && h.url) { s.url = h.url; const el = cardOf(s); if (el) setAm(el.querySelector('.lnk.am'), s); }
     if (!s.year && h.year) s.year = h.year;
   }
   return s;
@@ -858,7 +864,7 @@ async function resolveApple(s) {
   const h = await appleMatch(s);
   if (!h || s.url) return;
   s.url = h.url;
-  const el = cardOf(s); if (el) el.querySelector('.lnk.am').href = amLink(s);
+  const el = cardOf(s); if (el) setAm(el.querySelector('.lnk.am'), s);
 }
 
 // ---------------------------------------------------------------- Freigabe fürs Abspielen (iOS braucht eine Geste)
@@ -883,7 +889,7 @@ trackEl.addEventListener('click', e => {
   const btn = e.target.closest('[data-a]');
   if (btn) {
     const a = btn.dataset.a;
-    if (a === 'link') { if (!btn.getAttribute('href') || btn.classList.contains('am') && !s.url) btn.href = amLink(s); pause(); return; }
+    if (a === 'link') { if (!btn.getAttribute('href') || btn.classList.contains('am') && !s.url) setAm(btn, s); pause(); return; }
     if (a === 'seek') return;
     haptic();
     if (a === 'like') { toggleLike(s); if (likedIds.has(s.id)) burst(btn, ['#ff3b5c', '#ff8fa3', '#ffd0da']); }
@@ -998,7 +1004,7 @@ function lessLikeThis(i, card) {
   setTimeout(() => card.classList.remove('gone'), 1300);
 }
 async function shareSong(s) {
-  const url = (s.url && amSong(s.url)) || s.dzUrl || spotifyUrl(s);
+  const url = s.url || s.dzUrl || spotifyUrl(s);
   const text = `${s.title} – ${s.artist}`;
   try {
     if (navigator.share) await navigator.share({ title: text, text: `${text} (entdeckt mit Klangfeed)`, url });
@@ -1068,7 +1074,7 @@ function renderSaved() {
     return `<li class="${on ? 'playing' : ''}" data-id="${esc(s.id)}">
       <button class="thumb" data-a="play" aria-label="${on ? 'Pause' : 'Abspielen'}"><img src="${esc(s.artS || s.art)}" alt="" loading="lazy" decoding="async"><b>${svg(on && !pa.paused ? 'pause' : 'play')}</b></button>
       <div class="t"><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.why ? ' · ' + esc(s.why) : ''}</small>
-        <div class="ln"><a href="${esc(amLink(s))}" target="_blank" rel="noopener">Apple Music</a><a href="${esc(spotifyUrl(s))}" target="_blank" rel="noopener">Spotify</a></div></div>
+        <div class="ln"><a href="${esc(amLink(s))}"${amTarget(s)}>Apple Music</a><a href="${esc(spotifyUrl(s))}" target="_blank" rel="noopener">Spotify</a></div></div>
       <button class="del" data-a="del" aria-label="Entfernen">${svg('x')}</button>
     </li>`;
   }).join('');
