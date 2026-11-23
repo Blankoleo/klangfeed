@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0b10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Klangfeed">
+  <title>Klangfeed – Neue Musik entdecken</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://itunes.apple.com">
+  <link rel="preconnect" href="https://is1-ssl.mzstatic.com">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <nav id="chips" aria-label="Genres"></nav>
+    <button id="savedBtn" class="saved-btn" aria-label="Gemerkte Songs">❤️ <span id="savedCount">0</span></button>
+  </header>
+
+  <main id="feed" aria-label="Song-Feed">
+    <div id="track"></div>
+  </main>
+
+  <div id="loader" class="loader" hidden><div class="spinner"></div><p>Lade neue Songs …</p></div>
+
+  <div id="startOverlay" class="start-overlay">
+    <div class="start-inner">
+      <img src="icon.svg" alt="" width="96" height="96">
+      <h1>Klangfeed</h1>
+      <p>Wische nach oben und entdecke neue Musik.<br>Jeder Song spielt eine 30-Sekunden-Vorschau.</p>
+      <button id="startBtn" class="start-btn" disabled>Lädt …</button>
+    </div>
+  </div>
+
+  <section id="saved" class="saved-panel" hidden aria-label="Gemerkt">
+    <header class="saved-head">
+      <h2>Gemerkt</h2>
+      <button id="savedClose" class="icon-btn" aria-label="Schließen">✕</button>
+    </header>
+    <ul id="savedList" class="saved-list"></ul>
+    <p id="savedEmpty" class="saved-empty">Noch nichts gemerkt.<br>Tippe auf ❤️ bei einem Song.</p>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
