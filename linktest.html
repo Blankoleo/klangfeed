@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111">
+<title>Klangfeed Link-Test</title>
+<style>
+body{font:17px -apple-system,system-ui,sans-serif;background:#111;color:#eee;padding:calc(env(safe-area-inset-top) + 16px) 20px 40px;max-width:480px;margin:auto}
+a,button{display:block;width:100%;box-sizing:border-box;text-align:left;margin:12px 0;padding:15px 16px;border:0;border-radius:14px;background:#2a2340;color:#fff;text-decoration:none;font:600 17px -apple-system,system-ui,sans-serif}
+small{display:block;font-weight:400;opacity:.6;margin-top:3px}
+.back{background:#333;text-align:center}
+</style></head><body>
+<a class="back" href="./">‹ Zurück zu Klangfeed</a>
+<h2>Welche Nummer öffnet „Smooth Operator“ von Sade?</h2>
+<p>Jede Nummer antippen, danach zurück zu Klangfeed wechseln. Merk dir alle, bei denen der Song direkt kommt.</p>
+<a href="music://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244">1<small>music:// – normaler Link</small></a>
+<a href="music://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244" target="_blank">2<small>music:// – neues Fenster</small></a>
+<button id="b3">3<small>music:// – per Skript</small></button>
+<button id="b4">4<small>music:// – per Skript, neues Fenster</small></button>
+<a href="https://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244" target="_blank" rel="noopener">5<small>https – neues Fenster</small></a>
+<a href="https://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244&app=music">6<small>https + app=music – normaler Link</small></a>
+<a href="itmss://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244">7<small>itmss:// – normaler Link</small></a>
+<script>
+const u = 'music://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244';
+document.getElementById('b3').onclick = () => { location.href = u; };
+document.getElementById('b4').onclick = () => { window.open(u, '_blank'); };
+</script>
+</body></html>
