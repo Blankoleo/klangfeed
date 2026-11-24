@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111">
+<title>Klangfeed Link-Test 2</title>
+<style>
+body{font:17px -apple-system,system-ui,sans-serif;background:#111;color:#eee;padding:calc(env(safe-area-inset-top) + 16px) 20px 40px;max-width:480px;margin:auto}
+a,button{display:block;width:100%;box-sizing:border-box;text-align:left;margin:12px 0;padding:15px 16px;border:0;border-radius:14px;background:#2a2340;color:#fff;text-decoration:none;font:600 17px -apple-system,system-ui,sans-serif}
+small{display:block;font-weight:400;opacity:.6;margin-top:3px}
+.back{background:#333;text-align:center}
+</style></head><body>
+<a class="back" href="./">‹ Zurück zu Klangfeed</a>
+<h2>Test 2: Welche Buchstaben öffnen den richtigen Song?</h2>
+<p>Jeden Buchstaben antippen und dann zurückwechseln. Merk dir, bei welchen Buchstaben der <b>richtige Song</b> kommt und bei welchen nur die Startseite.</p>
+<button data-u="music://music.apple.com/de/album/smooth-operator-single-version/604770232?i=604770244">A · Sade – Smooth Operator<small>wie in Test 1</small></button>
+<button data-u="music://music.apple.com/de/album/bad-habit/6788150539?i=6788150545">B · Steve Lacy – Bad Habit</button>
+<button data-u="music://music.apple.com/de/album/champagne-coast/444588060?i=444588093">C · Blood Orange – Champagne Coast</button>
+<button data-u="music://music.apple.com/de/album/flower-in-a-hurricane/6812476961?i=6812477273">D · Justice – Flower In A Hurricane<small>aus den deutschen Charts</small></button>
+<button data-u="music://music.apple.com/de/album/babydoll/6794168372?i=6794168373">E · Jamie Miller – Babydoll<small>aus den britischen Charts</small></button>
+<button data-u="music://music.apple.com/de/song/champagne-coast/444588093">F · Blood Orange – Champagne Coast<small>andere Link-Form</small></button>
+<a href="music://music.apple.com/de/album/champagne-coast/444588060?i=444588093">G · Blood Orange – Champagne Coast<small>als normaler Link</small></a>
+<script>
+document.querySelectorAll('button[data-u]').forEach(b => b.onclick = () => { location.href = b.dataset.u; });
+</script>
+</body></html>
