@@ -119,11 +119,23 @@ const appleSearch = s => 'https://music.apple.com/de/search?term=' + encodeURICo
 // Getestet (Nov 2026): nur music://music.apple.com/<land>/album/<name>/<albumId>?i=<songId> springt direkt zum Song.
 const amApp = url => {
   const m = /music\.apple\.com\/([a-z]{2})\/album\/([^/?]+\/)?(\d+)\?(?:.*&)?i=(\d+)/.exec(url || '');
-  return m ? `music://music.apple.com/${m[1]}/album/${m[2] || ''}${m[3]}?i=${m[4]}` : url;
+  return m ? `music://music.apple.com/de/album/${m[2] || ''}${m[3]}?i=${m[4]}` : url;   // immer deutscher Store (Leos Konto)
 };
 const amLink = s => s.url ? amApp(s.url) : appleSearch(s);
 const setAm = (a, s) => { if (!a) return; a.href = amLink(s); if (a.href.startsWith('music:')) { a.removeAttribute('target'); a.removeAttribute('rel'); } else { a.target = '_blank'; a.rel = 'noopener'; } };
 const amTarget = s => amLink(s).startsWith('music:') ? '' : ' target="_blank" rel="noopener"';
+// Apple Music öffnen: Song sicher heraussuchen, dann per Skript zur Musik-App springen
+// (auf Leos iPhone getestet: location.href = music://…album…?i=… öffnet den Song direkt).
+async function openAppleMusic(s) {
+  if (!s.url) {
+    const h = await Promise.race([appleMatch(s), new Promise(r => setTimeout(() => r(null), 4000))]);
+    if (h && h.url) s.url = h.url;
+  }
+  const u = s.url ? amApp(s.url) : '';
+  if (u.startsWith('music:')) { location.href = u; return; }
+  // Kein Treffer bei Apple: Suche in der Musik-App
+  location.href = 'music://music.apple.com/de/search?term=' + encodeURIComponent(`${mainArtist(s.artist)} ${s.title}`);
+}
 const itArt = (url, size) => url ? url.replace(/\/\d+x\d+bb(\.\w+)$/, `/${size}x${size}bb$1`) : '';
 const dzArt = (md5, size) => md5 ? `https://cdn-images.dzcdn.net/images/cover/${md5}/${size}x${size}-000000-80-0-0.jpg` : '';
 const dzExp = url => { const m = /exp=(\d{9,})/.exec(url || ''); return m ? m[1] * 1000 : 0; };
@@ -889,7 +901,7 @@ trackEl.addEventListener('click', e => {
   const btn = e.target.closest('[data-a]');
   if (btn) {
     const a = btn.dataset.a;
-    if (a === 'link') { if (!btn.getAttribute('href') || btn.classList.contains('am') && !s.url) setAm(btn, s); pause(); return; }
+    if (a === 'link') { pause(); if (btn.classList.contains('am')) { e.preventDefault(); openAppleMusic(s); } return; }
     if (a === 'seek') return;
     haptic();
     if (a === 'like') { toggleLike(s); if (likedIds.has(s.id)) burst(btn, ['#ff3b5c', '#ff8fa3', '#ffd0da']); }
@@ -1074,7 +1086,7 @@ function renderSaved() {
     return `<li class="${on ? 'playing' : ''}" data-id="${esc(s.id)}">
       <button class="thumb" data-a="play" aria-label="${on ? 'Pause' : 'Abspielen'}"><img src="${esc(s.artS || s.art)}" alt="" loading="lazy" decoding="async"><b>${svg(on && !pa.paused ? 'pause' : 'play')}</b></button>
       <div class="t"><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.why ? ' · ' + esc(s.why) : ''}</small>
-        <div class="ln"><a href="${esc(amLink(s))}"${amTarget(s)}>Apple Music</a><a href="${esc(spotifyUrl(s))}" target="_blank" rel="noopener">Spotify</a></div></div>
+        <div class="ln"><a href="${esc(amLink(s))}" data-a="am">Apple Music</a><a href="${esc(spotifyUrl(s))}" target="_blank" rel="noopener">Spotify</a></div></div>
       <button class="del" data-a="del" aria-label="Entfernen">${svg('x')}</button>
     </li>`;
   }).join('');
@@ -1083,6 +1095,7 @@ $('#saved-list').addEventListener('click', e => {
   const b = e.target.closest('[data-a]'); if (!b) { return; }
   const li = b.closest('li'); const id = li?.dataset.id;
   const s = likes.find(x => x.id === id); if (!s) return;
+  if (b.dataset.a === 'am') { e.preventDefault(); pause(); openAppleMusic(s); return; }
   if (b.dataset.a === 'play') {
     haptic();
     if (savedPlaying && savedPlaying.id === id && !pa.paused) { pause(); renderSaved(); }
