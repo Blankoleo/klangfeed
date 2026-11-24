@@ -132,9 +132,20 @@ async function openAppleMusic(s) {
     if (h && h.url) s.url = h.url;
   }
   const u = s.url ? amApp(s.url) : '';
+  releaseAudio();
   if (u.startsWith('music:')) { location.href = u; return; }
   // Kein Treffer bei Apple: Suche in der Musik-App
   location.href = 'music://music.apple.com/de/search?term=' + encodeURIComponent(`${mainArtist(s.artist)} ${s.title}`);
+}
+// Wiedergabe komplett freigeben, bevor die Musik-App übernimmt. Solange Klangfeed noch als
+// „Jetzt läuft“ gilt, zeigt die Musik-App auf dem iPhone sonst nur die Startseite statt des Songs.
+function releaseAudio() {
+  try {
+    wantPlay = false; clearTimeout(watchdog);
+    pa.pause(); pa.removeAttribute('src'); pa.dataset.id = ''; pa.dataset.src = ''; pa.load();
+    if ('mediaSession' in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; }
+    const now = nowSong(); if (now) setCardState(now, 'paused');
+  } catch {}
 }
 const itArt = (url, size) => url ? url.replace(/\/\d+x\d+bb(\.\w+)$/, `/${size}x${size}bb$1`) : '';
 const dzArt = (md5, size) => md5 ? `https://cdn-images.dzcdn.net/images/cover/${md5}/${size}x${size}-000000-80-0-0.jpg` : '';
@@ -465,22 +476,35 @@ function chooseMode() {
   if (filter !== 'mix') return filter;
   return weighted(Object.keys(MODES).map(m => [m, (mix[m] || 0) * lw('mw', m)])) || 'dir';
 }
-// Nächsten Song aus einem Vorrat: Künstler nicht kurz hintereinander, Gründe abwechseln
+// ---- Durchmischen: Songs derselben „Gruppe“ (gleicher Lieblingskünstler, gleiche Nische,
+// gleiche Richtung, gleiches Charts-Land) sollen nicht hintereinander kommen.
+const GAP_GROUP = 3, GAP_ARTIST = 8;
+const groupOf = s => s.seed ? 'seed:' + norm(s.seed) : s.niche ? 'niche:' + s.niche : s.style ? 'style:' + s.style : 'why:' + (s.why || s.mode || '');
+const groupsIn = b => new Set(b.map(groupOf)).size;
+// Bewertet, wie gut ein Song jetzt passt: 2 = passt, 1 = nur Künstler ok, 0 = zu ähnlich
+function fitScore(s) {
+  const recentG = songs.slice(-GAP_GROUP).map(groupOf);
+  const recentA = songs.slice(-GAP_ARTIST).map(x => norm(mainArtist(x.artist)));
+  const aOk = !recentA.includes(norm(mainArtist(s.artist)));
+  return aOk && !recentG.includes(groupOf(s)) ? 2 : aOk ? 1 : 0;
+}
+// Bester Kandidat aus einem Vorrat (ganzer Vorrat, nicht nur die ersten paar)
+function bestIn(m) {
+  const b = buckets[m]; let best = -1, sc = -1;
+  for (let i = 0; i < b.length; i++) { const f = fitScore(b[i]); if (f > sc) { sc = f; best = i; if (f === 2) break; } }
+  return { idx: best, score: sc };
+}
 function pull(m) {
   const b = buckets[m];
   if (!b.length) return null;
-  const recentA = songs.slice(-6).map(s => norm(mainArtist(s.artist)));
-  const last = songs[songs.length - 1];
-  let idx = b.findIndex((s, i) => i < 8 && !recentA.includes(norm(mainArtist(s.artist))) && (!last || s.why !== last.why));
-  if (idx < 0) idx = b.findIndex((s, i) => i < 8 && !recentA.includes(norm(mainArtist(s.artist))));
-  if (idx < 0) idx = 0;
-  return b.splice(idx, 1)[0];
+  const { idx } = bestIn(m);
+  return b.splice(Math.max(0, idx), 1)[0];
 }
 function fill(n = 8) {
   if (filling) return filling;
   const gen = feedGen;
   const p = (async () => {
-    let added = 0, fails = 0;
+    let added = 0, fails = 0, tooSimilarWaited = false;
     while (added < n && fails < 6 && gen === feedGen) {
       let m = chooseMode();
       if (!buckets[m].length) {
@@ -493,7 +517,16 @@ function fill(n = 8) {
           if (!got) { fails++; if (!navigator.onLine) break; continue; }
         }
       }
-      if (buckets[m].length < 3) refill(m);
+      // Immer mehrere Gruppen im Vorrat halten, damit sich etwas abwechseln kann
+      if (buckets[m].length < 3 || groupsIn(buckets[m]) < 3) refill(m);
+      if (bestIn(m).score < 2) {
+        // Alles hier wäre zu ähnlich zum Vorigen → im Mix aus einer anderen Art nehmen …
+        const alt = filter === 'mix' && Object.keys(buckets).find(k => k !== m && mix[k] > 0 && buckets[k].length && bestIn(k).score === 2);
+        if (alt) m = alt;
+        // … sonst kurz auf frischen Nachschub (neue Gruppe) warten
+        else if (!tooSimilarWaited) { tooSimilarWaited = true; await refill(m); if (gen !== feedGen) break; }
+      }
+      tooSimilarWaited = false;
       const s = pull(m);
       if (!s) { fails++; continue; }
       songs.push(s);
@@ -993,7 +1026,8 @@ async function moreLikeThis(i, btn) {
     const ins = [];
     for (let k = 0; k < 3; k++) { if (own[k]) ins.push(own[k]); if (sim[k]) ins.push(sim[k]); }
     if (!ins.length) { toast('Dazu gerade nichts Neues gefunden'); return; }
-    songs.splice(cur + 1, 0, ...ins);
+    // Verteilt einschieben (jeder zweite Platz), damit nicht alles Ähnliche am Stück kommt
+    ins.forEach((x, k) => songs.splice(Math.min(songs.length, cur + 1 + k * 2), 0, x));
     resetCards(cur + 1);
     layout();
     preloadNext();

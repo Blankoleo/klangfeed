@@ -1,6 +1,6 @@
 // Netz zuerst (damit Updates sofort ankommen), Cache als Offline-Ersatz. API, Cover und Audio gehen immer direkt ins Netz.
 // Bei jeder App-Änderung die Nummer erhöhen: Dann gilt beim nächsten Start die neue Version.
-const CACHE = 'klangfeed-v9';
+const CACHE = 'klangfeed-v10';
 const FILES = ['./', 'index.html', 'theme.js', 'style.css', 'app.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(f => fetch(f, { cache: 'no-cache' }).then(r => { if (r.ok) return c.put(f, r); }).catch(() => {})))));
